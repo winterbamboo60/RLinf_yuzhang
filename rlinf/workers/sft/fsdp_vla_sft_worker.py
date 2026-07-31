@@ -60,6 +60,7 @@ class FSDPVlaSftWorker(FSDPSftWorker):
                 repo_id=repo_id,
                 data_kwargs=getattr(self.cfg.actor.model, "openpi_data", None),
             )
+            # 用 pi05_piper_state 构建 OpenPI 数据/模型配置
             data_loader = openpi_data_loader.create_data_loader(
                 config, framework="pytorch", shuffle=True
             )

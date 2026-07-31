@@ -50,15 +50,60 @@ cd RLinf
 
 **方式一：Docker 镜像**
 
-``` bash
+```bash
 docker run -it --rm --gpus all \
    --shm-size 20g \
    --network host \
    --name rlinf \
    -v .:/workspace/RLinf \
    rlinf/rlinf:agentic-rlinf0.2-maniskill_libero
-   # 为提高国内下载速度，可以使用：
-   # docker.1ms.run/rlinf/rlinf:agentic-rlinf0.2-maniskill_libero
+
+# 为提高国内下载速度，可以使用：
+docker run -it --rm --gpus all \
+   --shm-size 20g \
+   --network host \
+   --name rlinf \
+   -v .:/workspace/RLinf \
+   docker.1ms.run/rlinf/rlinf:agentic-rlinf0.2-maniskill_libero
+
+# 挂载用户目录
+docker run -d --gpus all \
+   --shm-size 120g \
+   --network host \
+   --name rlinf \
+   -v /home/yz:/home/yz \
+   docker.1ms.run/rlinf/rlinf:agentic-rlinf0.2-maniskill_libero \
+   tail -f /dev/null
+
+docker run -it -d --gpus '"device=1"' \
+   --shm-size 20g \
+   --network host \
+   --name rlinf \
+   -v /home/yz:/home/yz \
+   docker.1ms.run/rlinf/rlinf:agentic-rlinf0.2-maniskill_libero \
+   tail -f /dev/null
+```
+
+```bash
+先看容器是否还在运行：
+
+  docker ps -a --filter name=rlinf
+
+  如果它还在运行，直接进入：
+
+  docker exec -it rlinf /bin/bash
+
+  停止容器运行
+  docker stop rlinf
+
+  如果它已经退出，删除旧容器：
+
+  docker rm rlinf
+
+  然后用显式 bash 重新启动：
+
+退出镜像
+  Ctrl+D
 ```
 
 进入容器后，切换到 OpenPI 虚拟环境：
@@ -279,6 +324,8 @@ actor:
 
 ``` bash
 bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05
+
+nohup bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05 > /home/yz/projects/outputs/logs/RLinf_pi05_base_smovla_V3_0720_valueTrain0724.log 2>&1 &
 ```
 
 保存出的检查点目录通常形如：

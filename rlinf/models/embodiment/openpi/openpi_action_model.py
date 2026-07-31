@@ -393,6 +393,9 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
 
         # PI0Pytorch.forward returns per-element MSE (reduction="none").
         if self.config.use_rlt:
+            # 同时计算rlt_loss+vla_loss
+            # rlt_loss的目标是重建observation
+            # vla_loss的目标是让Action expert预测actions
             loss, prefix_output, prefix_mask = self._sft_forward_with_rlt_prefix(
                 observation, actions
             )
@@ -404,6 +407,7 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         if not self.config.use_rlt:
             return vla_loss
 
+        # 计算rlt损失
         rlt_param = next(self.rlt_module.parameters())
         prefix_output = prefix_output.to(device=rlt_param.device, dtype=rlt_param.dtype)
         rlt_mask = prefix_mask if self.config.rlt_use_mask else None
@@ -416,23 +420,47 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         }
 
     def _sft_forward_with_rlt_prefix(self, observation, actions):
+        # 函数本身不直接算最终标量 rlt_loss；它返回 prefix_output，由外层 sft_forward() 送入 self.rlt_module(...) 计算，作用：
+        # 1. 计算 VLA 的 flow-matching 动作预测逐元素损失；
+        # 2. 取出 VLM prefix hidden states，作为后续 rlt_loss 的重建目标。
+        #
+        # 输入：
+        #   observation  # 已经完成 OpenPI 数据变换的 Observation
+        #   actions      # [B, H, A]，归一化、必要时 padding 后的专家动作
+        # 输出：
+        #   loss, prefix_output, prefix_pad_masks
+        # 其中 loss 还不是标量，是 VLA 每个 action 元素的 MSE。
+
         images, img_masks, lang_tokens, lang_masks, state = (
             self._preprocess_observation(observation, train=True)
         )
 
         noise = self.sample_noise(actions.shape, actions.device)
+        # 训练过程中会为 batch 中的每个样本随机生成一个时间步
         time = self.sample_time(actions.shape[0], actions.device)
 
         time_expanded = time[:, None, None]
         x_t = time_expanded * noise + (1 - time_expanded) * actions
+        # 构造 flow-matching 标签 (u_t)，这是 VLA 动作分支真正的监督标签，而不是 x_t 本身
         u_t = noise - actions
 
+        # 注意：图像和语言组成 VLM prefix；state 不在 prefix，而在 suffix/action 分支。
+        #   图像 → vision tokens
+        #   语言 → language tokens
+        #   拼接 → prefix_embs: [B, Lp, 2048] 
+        # 当前 Stage 1 配置 rlt_image_only: False，后续 RLT 会保留图像与语言两类 prefix token
         prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(
             images, img_masks, lang_tokens, lang_masks
         )
+        # 把低维 state、加噪动作 x_t、时间 (t) 编码成 action expert 的 suffix token：
+        # state + x_t + time
+        #     ↓
+        # suffix_embs
+        # adarms_cond 是供模型内部自适应归一化/条件调制使用的时间条件。这个分支携带“当前动作去噪到哪个阶段”的信息。
         suffix_embs, suffix_pad_masks, suffix_att_masks, adarms_cond = (
             self.embed_suffix(state, x_t, time)
         )
+        # 统一 VLM 输入 dtype
         backbone_dtype = self.paligemma_with_expert.paligemma.language_model.layers[
             0
         ].self_attn.q_proj.weight.dtype
@@ -441,12 +469,23 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
         if suffix_embs.dtype != backbone_dtype:
             suffix_embs = suffix_embs.to(dtype=backbone_dtype)
 
+        # 拼接 mask 并生成二维 attention 关系
         pad_masks = torch.cat([prefix_pad_masks, suffix_pad_masks], dim=1)
         att_masks = torch.cat([prefix_att_masks, suffix_att_masks], dim=1)
         att_2d_masks = make_att_2d_masks(pad_masks, att_masks)
         position_ids = torch.cumsum(pad_masks, dim=1) - 1
         att_2d_masks_4d = self._prepare_attention_masks_4d(att_2d_masks)
 
+        # 定义实际的 VLM 主干前向
+        # 这里真正执行 PaliGemma + action expert：
+        #   - inputs_embeds=[prefix_embs, suffix_embs]：传入两段 embedding；
+        #   - past_key_values=None：训练时不复用 KV cache；
+        #   - use_cache=False：不保留生成缓存，节约不必要显存；
+        #   - adarms_cond=[None, adarms_cond]：prefix 不需要该条件；suffix 使用 flow time 条件。
+        # 输出：
+        #   - prefix_output [B,Lp,2048]：图像/语言 token 经过 VLM 后的 hidden states；
+        #   - suffix_out：state/action/time token 经 action expert 后的 hidden states。
+        # 这正是 RLT 与 VLA 共用同一次 VLM 前向的地方。
         def forward_func(
             prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
         ):
@@ -459,7 +498,10 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
                 adarms_cond=[None, adarms_cond],
             )
             return prefix_output, suffix_out
-
+    
+        # _apply_checkpoint 控制 activation checkpoint：
+        #   - 启用时，前向少存中间激活，反向时重算，节省显存；
+        #   - 未启用时，效果等价于直接调用 forward_func(...)。
         prefix_output, suffix_out = self._apply_checkpoint(
             forward_func,
             prefix_embs,
@@ -469,15 +511,22 @@ class OpenPi0ForRLActionPrediction(PI0Pytorch, BasePolicy):
             adarms_cond,
         )
 
+        # 保留 action horizon 对应的 suffix token，即机械臂实际具有的动作维度（7D）
         suffix_out = suffix_out[:, -self.config.action_horizon :]
+        # 转 fp32 计算损失，动作预测损失通常在 fp32 中计算，数值更稳定。
         suffix_out = suffix_out.to(dtype=torch.float32)
 
+        # 投影为预测 velocity
+        # action_out_proj 将每个 action token hidden state 投影到内部动作维度，就是模型预测的 flow velocity。
         def action_out_proj_func(suffix_out):
             return self.action_out_proj(suffix_out)
 
         v_t = self._apply_checkpoint(action_out_proj_func, suffix_out)
+        # 计算逐元素 VLA flow loss，结果形状仍为：[B, H, A]
         loss = F.mse_loss(u_t, v_t, reduction="none")
 
+        # 截断 RLT 对 VLA 主干的梯度, 将 VLM 输出的 prefix 特征变成常量 target。之后 RLT 重建损失无法沿此路径更新 VLM 主干。
+        # prefix_output是：  视觉 token + 语言 token
         prefix_output, prefix_pad_masks = self._select_rlt_prefix_embeddings(
             prefix_output.detach(), prefix_pad_masks, lang_tokens
         )

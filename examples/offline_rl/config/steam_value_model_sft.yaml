@@ -23,7 +23,7 @@ runner:
   logger:
     log_path: "../results"
     project_name: rlinf
-    experiment_name: "steam_sft_smovla_v2_0713"
+    experiment_name: "steam_sft_smovla_v3_0720"
     logger_backends: ["tensorboard"]
 
   max_epochs: -1
@@ -70,12 +70,12 @@ algorithm:
 actor:
   group_name: "ActorGroup"
   training_backend: "fsdp"
-  micro_batch_size: 32
+  micro_batch_size: 64
   global_batch_size: 256
   seed: 0
 
   model:
-    precision: bf16
+    precision: fp32
     fusion_hidden_dim: 512
     dropout: 0.1
     label_smoothing: 0.05

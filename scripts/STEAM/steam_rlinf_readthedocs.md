@@ -296,13 +296,13 @@ bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_m
 bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_model_sft data.k=8
 
 # 后台运行
-nohup bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_model_sft > /home/yz/projects/outputs/logs/RLinf_smovla_V3_0720_valueTrain0720.log 2>&1 &
+nohup bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_model_sft > /home/yz/projects/outputs/logs/RLinf_smovla_V3_0720_valueTrain0727.log 2>&1 &
 echo $!
 
 # 断点续训
 nohup bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_model_sft \
-    +runner.resume_dir=/home/yz/projects/RLinf/logs/steam_sft/steam_value_model_sft-20260713-07:00:10/steam_sft/checkpoints/global_step_1000 \
-    > /home/yz/projects/outputs/logs/RLinf_V8-1_0713-2.log 2>&1 &
+    +runner.resume_dir=/home/yz/projects/RLinf_yuzhang/logs/steam_sft/steam_value_model_sft-20260727-09:29:53/steam_sft_smovla_v2_0713/checkpoints/global_step_1000 \
+    > /home/yz/projects/outputs/logs/RLinf_smovla_V3_0720_valueTrain0729.log 2>&1 &
 
 # 核心代码：
 ls projects/RLinf/rlinf/workers/sft/fsdp_steam_sft_worker.py

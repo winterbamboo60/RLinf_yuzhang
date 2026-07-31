@@ -48,7 +48,14 @@ def predict_rlt_actions(
     intervene_requested: torch.Tensor | None = None,
     expert_model: Any | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
+    # 先将原始观测压缩成 RLT 状态
     with torch.no_grad():
+        # 输出：
+        # rlt_obs = {
+        #     "z_rl":      [B, 2048],   # 图像+语言前缀token经RLT_encoder压缩后的
+        #     "proprio":   [B, 19],     # 
+        #     "ref_chunk": [B, 20, 7],  # Action expert 的输出
+        # }
         rlt_obs = feature_model.extract_rlt_obs(env_obs)
         actions, result = policy_model.predict_action_batch(
             env_obs=rlt_obs,

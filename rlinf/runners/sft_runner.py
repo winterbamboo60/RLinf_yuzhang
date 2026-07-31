@@ -63,6 +63,7 @@ class SFTRunner:
         # create worker in order to decrease the maximum memory usage
         self.actor.init_worker().wait()
 
+        # 读取checkpoint，如果有的话
         resume_dir = self.cfg.runner.get("resume_dir", None)
         if resume_dir is None:
             return
@@ -72,6 +73,7 @@ class SFTRunner:
             f"resume_dir {actor_checkpoint_path} does not exist."
         )
         self.actor.load_checkpoint(actor_checkpoint_path).wait()
+        # 将global_step设置为checkpoint的step
         self.global_step = int(resume_dir.split("global_step_")[-1])
 
     def run(self) -> None:
@@ -82,6 +84,7 @@ class SFTRunner:
             desc="Global Step",
             ncols=800,
         )
+        # 日志间隔，单位是step
         progress_log_interval = int(self.cfg.runner.get("log_interval", 10))
         if progress_log_interval < 1:
             raise ValueError(
@@ -116,6 +119,7 @@ class SFTRunner:
                     eval_metrics = eval_handle.wait()
 
                     if self.early_stop is not None:
+                        # 若有早停机制，则根据eval_metrics[0]的val_acc来判断是否需要早停
                         should_stop, best_val_acc_improved = self.early_stop.update(
                             eval_metrics[0]
                         )
@@ -224,7 +228,9 @@ class SFTRunner:
             )
 
     def set_max_steps(self) -> None:
+        # 每个epoch的最大step数
         self.num_steps_per_epoch = self.actor.get_max_steps_per_epoch().wait()[0]
+        # 读取配置，是按最大epoch数还是最大step数来训练
         max_epochs = self.cfg.runner.get("max_epochs", -1)
         max_steps = self.cfg.runner.get("max_steps", -1)
 
