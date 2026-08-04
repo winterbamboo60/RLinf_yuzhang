@@ -301,8 +301,8 @@ echo $!
 
 # 断点续训
 nohup bash examples/offline_rl/advantage_labeling/steam/run_steam_sft.sh steam_value_model_sft \
-    +runner.resume_dir=/home/yz/projects/RLinf_yuzhang/logs/steam_sft/steam_value_model_sft-20260727-09:29:53/steam_sft_smovla_v2_0713/checkpoints/global_step_1000 \
-    > /home/yz/projects/outputs/logs/RLinf_smovla_V3_0720_valueTrain0729.log 2>&1 &
+    +runner.resume_dir=/home/yz/projects/RLinf_yuzhang/logs/steam_sft/steam_value_model_sft-20260729-10:09:15/steam_sft_smovla_v3_0720/checkpoints/global_step_2000 \
+    > /home/yz/projects/outputs/logs/RLinf_smovla_V3_0720_valueTrain0803.log 2>&1 &
 
 # 核心代码：
 ls projects/RLinf/rlinf/workers/sft/fsdp_steam_sft_worker.py

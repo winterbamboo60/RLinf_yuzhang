@@ -12,6 +12,29 @@
 
 官方项目页：[Precise Manipulation with Efficient Online RL](https://www.pi.website/research/rlt)。
 
+
+## 整体逻辑
+**Stage1：SFT训练VLA主干 + RLT Encoder-Decoder模块**
+此阶段主要目的是利用文本+图像token作为RLT模块的输入，以重构这一信息为目标训练RLT Encoder, 目的是提取文本+图像的压缩特征，即RL Token
+训练完成后，VLT主干 + RLT Encoder均冻结
+
+**Stage2：actor-critic在线RL**
+此阶段的主要目的是通过训练actor模型实现VLA输出的优化，actor模型的作用是在VLA基础上进一步调整其输出的action，actor模型的输入是<RL Token，State，ref_action>，输出是新的动作<actor_action>。
+
+此外，还准备了critic模型作为奖励模型来判断“当前 RLT 表征 + 当前数值状态 + 某个动作”好不好，训练阶段时，将输出一个Q值表示actor_action的价值，代表好与不好。
+
+同时，actor-critic是不断更新迭代的：
+actor：
+- 目标：L_actor = −0.1 × Q + 5 × L_BC
+- 说明：actor的优化将更多地参考VLA输出动作，并通过(actor_action, Q(actor, action))这一结构进行小幅度、受约束的改进
+crtic：
+- 目标：r₀ + 0.96r₁ + … + 0.96⁹r₉ + (1 − done) × 0.96¹⁰ × Q_next
+- 说明：r₀ + 0.96r₁ + … + 0.96⁹r₉ 表示未来10步的实际价值，后半段表示由critic预测的10步后的未来价值；任务完成时，done=1，且r=1，其余帧r=0。
+
+目前算法依赖是否达到**预设的成功State**来判断是否完成任务，这一点有待改进，例如替换为人工或VLM判断。
+
+
+
 ## 概览
 
 RLT 将表示学习和在线 RL 控制拆开。
@@ -292,6 +315,29 @@ bash examples/embodiment/collect_data.sh realworld_collect_data
 
 采集完成后，将 LeRobot 数据集放到训练节点，并为当前 RLT OpenPI dataconfig 计算归一化统计。`repo_id` 需要与 Stage 1 / Stage 2 配置中的 `actor.openpi_data.repo_id` 和 `rollout.rlt_feature_model.openpi_data.repo_id` 保持一致：
 
+PS：对EVO-RL-->Steam-->RLT的数据集，需要执行下列代码额外统计
+docker exec rlinf sh -c \
+    'nohup env PYTHONPATH=/home/yz/projects/RLinf_yuzhang \
+    /opt/venv/openpi/bin/python \
+    /home/yz/projects/RLinf_yuzhang/toolkits/lerobot/calculate_norm_stats.py \
+    --config-name pi05_piper_state \
+    --repo-id /home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf \
+    > /home/yz/projects/outputs/logs/v9_task2_0728_norm_stats.log 2>&1 & echo $!'
+
+完成后应生成：
+
+  /home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf/norm_stats.json
+
+  查看进度：
+
+  tail -f /home/yz/projects/outputs/logs/v9_task2_0728_norm_stats.log
+
+随后在 SFT 配置的 actor.model.openpi_data 中配置：
+
+  openpi_data:
+    repo_id: "realworld_package_flip_rlt_stage1"
+    norm_stats_path: "/home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf/norm_stats.json"
+
 ``` bash
 export HF_LEROBOT_HOME=/path/to/lerobot_root
 python toolkits/lerobot/calculate_norm_stats.py \
@@ -325,7 +371,7 @@ actor:
 ``` bash
 bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05
 
-nohup bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05 > /home/yz/projects/outputs/logs/RLinf_pi05_base_smovla_V3_0720_valueTrain0724.log 2>&1 &
+nohup bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05 > /home/yz/projects/outputs/logs/RLinf_pi05_base_packageFlip_v9_task2_0728_valueTrain0804.log 2>&1 &
 ```
 
 保存出的检查点目录通常形如：
@@ -649,7 +695,7 @@ next_obs = {next_z_rl, next_proprio, next_ref_chunk}
 - Stage 1 和 Stage 2 的数据配置必须保持一致：`repo_id`、`config_name`、`action_dim`、`proprio_dim`、`ref_num_action_chunks` 和 `z_dim` 都要对齐；如果保留完整 raw state，可使用 `state_indices: []`。
 - `rollout.rlt_feature_model` 指向 Stage 1 检查点；`actor.model` 是 actor-critic worker 会更新的 Stage 2 MLP 策略。
 - `rollout.model` 是 Stage 2 MLP 在 rollout worker 上的同步副本。Stage 2 从头训练时保持 `rollout.model.model_path: null`；恢复 Stage 2 训练使用 `runner.resume_dir`，加载单个 Stage 2 权重文件使用 `runner.ckpt_path`。
-- 不要配置 `actor.model.model_path` 来加载 Stage 1；`actor.model` 只描述 Stage 2 MLP 的输入输出维度和 Q-head 设置。
+- 不配置 `actor.model.model_path` 来加载 Stage 1；`actor.model` 只描述 Stage 2 MLP 的输入输要出维度和 Q-head 设置。
 - Stage 2 MLP 配置直接内联在各个 Stage 2 YAML 的 `actor.model` 下，不再使用单独的 model defaults 文件。
 - `keyboard_reward_wrapper: rlt_policy_switch` 只在需要人工控制关键阶段切换时使用。
 - ManiSkill joint 示例使用 `env.*.rlt_policy_switch`，不要再使用真机的 keyboard wrapper。

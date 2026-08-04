@@ -38,7 +38,7 @@ git switch -c dev
 ```
 git status
 git add .
-git commit -m "feat: add robot training module"
+git commit -m "feat: 添加RL Token的相关注释"
 ```
 
 ## 3.3 推送到自己的 GitHub
