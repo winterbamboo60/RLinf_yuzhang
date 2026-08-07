@@ -38,7 +38,7 @@ git switch -c dev
 ```
 git status
 git add .
-git commit -m "feat: 添加RL Token的相关注释"
+git commit -m "feat: 添加数据集转化方式指南"
 ```
 
 ## 3.3 推送到自己的 GitHub

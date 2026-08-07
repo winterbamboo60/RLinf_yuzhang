@@ -23,19 +23,19 @@ runner:
     logger_backends: ["tensorboard"]
 
   max_epochs: -1
-  max_steps: 20000
+  max_steps: 6000
   val_check_interval: -1
   save_interval: 2000
 
 data:
   # Local LeRobot dataset root. It should directly contain data/ and meta/.
-  # train_data_paths: "/home/yz/datasets/1F_0713/smovla_V3_0720_merged_RLinf"
-  train_data_paths: "/home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf"
+  train_data_paths: "/home/yz/datasets/1F_0713/smovla_V3_0720_merged_RLinf"
+  # train_data_paths: "/home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf"
 
 actor:
   group_name: "ActorGroup"
   training_backend: "fsdp"
-  micro_batch_size: 1
+  micro_batch_size: 16
   global_batch_size: 64
   seed: 42
 
@@ -51,8 +51,9 @@ actor:
       # repo_id: "realworld_peg_insertion_rlt_stage1"
       # Generated from this dataset with toolkits/lerobot/calculate_norm_stats.py.
       # Keep Stage2 on this exact asset to preserve action/state scaling.
-      norm_stats_path: "/home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf/norm_stats.json"
-      repo_id: "realworld_package_flip_rlt_stage1"
+      # norm_stats_path: "/home/yz/datasets/v9_task2_0728/v9_task2_0728_merged_RLinf/norm_stats.json"
+      norm_stats_path: "/home/yz/datasets/1F_0713/smovla_V3_0720_merged_RLinf/norm_stats.json"
+      repo_id: "realworld_package_sorting_rlt_stage1"
 
     openpi:
       config_name: "pi05_piper_state"

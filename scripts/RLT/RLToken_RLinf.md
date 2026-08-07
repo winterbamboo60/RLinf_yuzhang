@@ -371,7 +371,7 @@ actor:
 ``` bash
 bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05
 
-nohup bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05 > /home/yz/projects/outputs/logs/RLinf_pi05_base_packageFlip_v9_task2_0728_valueTrain0804.log 2>&1 &
+nohup bash examples/sft/run_vla_sft.sh realworld_rlt_stage1_sft_openpi_pi05 > /home/yz/projects/outputs/logs/RLinf_pi05_base_packageSoting_v3_0720_valueTrain0805.log 2>&1 &
 ```
 
 保存出的检查点目录通常形如：
